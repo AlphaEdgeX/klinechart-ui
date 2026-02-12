@@ -51,6 +51,8 @@ export { longPosition } from './overlays/position/longPosition';
 export { shortPosition } from './overlays/position/shortPosition';
 export { longEntry } from './overlays/position/longEntry';
 export { shortEntry } from './overlays/position/shortEntry';
+export { measure } from './overlays/measurement/measure';
+export { ruler } from './overlays/measurement/ruler';
 export { priceMeasurement } from './overlays/measurement/priceMeasurement';
 export { timeMeasurement } from './overlays/measurement/timeMeasurement';
 export { priceTimeMeasurement } from './overlays/measurement/priceTimeMeasurement';

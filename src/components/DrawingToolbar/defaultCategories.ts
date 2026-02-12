@@ -76,6 +76,8 @@ export const defaultCategories: ToolCategory[] = [
     id: 'measure',
     label: 'Measure',
     tools: [
+      { name: 'measure', label: 'Measure', overlayName: 'measure' },
+      { name: 'ruler', label: 'Ruler', overlayName: 'ruler' },
       { name: 'priceMeasurement', label: 'Price', overlayName: 'priceMeasurement' },
       { name: 'timeMeasurement', label: 'Time', overlayName: 'timeMeasurement' },
       { name: 'priceTimeMeasurement', label: 'Price + Time', overlayName: 'priceTimeMeasurement' },

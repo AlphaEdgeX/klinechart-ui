@@ -21,6 +21,8 @@ import { longPosition } from './position/longPosition';
 import { shortPosition } from './position/shortPosition';
 import { longEntry } from './position/longEntry';
 import { shortEntry } from './position/shortEntry';
+import { measure } from './measurement/measure';
+import { ruler } from './measurement/ruler';
 import { priceMeasurement } from './measurement/priceMeasurement';
 import { timeMeasurement } from './measurement/timeMeasurement';
 import { priceTimeMeasurement } from './measurement/priceTimeMeasurement';
@@ -54,6 +56,8 @@ const ALL_OVERLAYS = [
   longEntry,
   shortEntry,
   // Measurement
+  measure,
+  ruler,
   priceMeasurement,
   timeMeasurement,
   priceTimeMeasurement,

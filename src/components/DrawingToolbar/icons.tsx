@@ -113,6 +113,8 @@ export const toolIcons: Record<string, IconComponent> = {
   longEntry: ArrowUp,
   shortEntry: ArrowDown,
   // Measure
+  measure: Ruler,
+  ruler: Ruler,
   priceMeasurement: Ruler,
   timeMeasurement: Timer,
   priceTimeMeasurement: Clock,
