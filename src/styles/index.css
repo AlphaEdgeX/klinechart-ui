@@ -1,0 +1,296 @@
+/* klinechart-ui styles — .klc-* namespace */
+
+.klc-root {
+  --klc-bg: #1b1b1f;
+  --klc-bg-secondary: #252529;
+  --klc-bg-hover: #2d2d33;
+  --klc-text: #d1d4dc;
+  --klc-text-muted: #888;
+  --klc-border: rgba(255, 255, 255, 0.1);
+  --klc-accent: #2196f3;
+  --klc-accent-hover: #42a5f5;
+  --klc-danger: #ef5350;
+  --klc-success: #26a69a;
+  --klc-radius: 4px;
+  --klc-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --klc-font-size: 12px;
+}
+
+/* Light theme overrides */
+[data-klc-theme='light'] {
+  --klc-bg: #ffffff;
+  --klc-bg-secondary: #f5f5f5;
+  --klc-bg-hover: #e8e8e8;
+  --klc-text: #333333;
+  --klc-text-muted: #888888;
+  --klc-border: rgba(0, 0, 0, 0.1);
+}
+
+/* Root container */
+.klc-root {
+  font-family: var(--klc-font);
+  font-size: var(--klc-font-size);
+  color: var(--klc-text);
+  position: relative;
+  overflow: hidden;
+}
+
+/* ==================== Drawing Toolbar (Icon Sidebar) ==================== */
+
+.klc-drawing-toolbar {
+  width: 40px;
+  flex-shrink: 0;
+  background: var(--klc-bg-secondary);
+  border-right: 1px solid var(--klc-border);
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+}
+
+.klc-drawing-toolbar--left {
+  order: -1; /* appear before the chart in flex row */
+}
+
+.klc-drawing-toolbar--right {
+  order: 1; /* appear after the chart in flex row */
+  border-right: none;
+  border-left: 1px solid var(--klc-border);
+}
+
+/* Category area */
+.klc-toolbar-categories {
+  flex: 1;
+  padding: 4px 0;
+}
+
+/* Icon button */
+.klc-toolbar-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: 2px auto;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--klc-radius);
+  color: var(--klc-text-muted);
+  cursor: pointer;
+  position: relative;
+}
+
+.klc-toolbar-icon:hover {
+  background: var(--klc-bg-hover);
+  color: var(--klc-text);
+}
+
+.klc-toolbar-icon--active {
+  color: var(--klc-accent);
+}
+
+.klc-toolbar-icon--open {
+  background: var(--klc-bg-hover);
+  color: var(--klc-text);
+}
+
+/* Small chevron indicator on category icons */
+.klc-toolbar-chevron {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  opacity: 0.4;
+}
+
+/* ==================== Popover Submenu ==================== */
+
+.klc-toolbar-popover {
+  /* position: fixed is set inline by the component */
+  min-width: 160px;
+  background: var(--klc-bg-secondary);
+  border: 1px solid var(--klc-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  z-index: 10000;
+  padding: 4px 0;
+  white-space: nowrap;
+  font-family: var(--klc-font);
+  font-size: var(--klc-font-size);
+  color: var(--klc-text);
+}
+
+.klc-toolbar-popover-title {
+  padding: 4px 12px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--klc-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Tool buttons inside popover */
+.klc-tool-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  background: none;
+  border: none;
+  color: var(--klc-text);
+  font-size: var(--klc-font-size);
+  font-family: var(--klc-font);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.klc-tool-btn-icon {
+  flex-shrink: 0;
+  color: var(--klc-text-muted);
+}
+
+.klc-tool-btn--active .klc-tool-btn-icon {
+  color: inherit;
+}
+
+.klc-tool-btn:hover {
+  background: var(--klc-bg-hover);
+}
+
+.klc-tool-btn--active {
+  background: var(--klc-accent);
+  color: #ffffff;
+}
+
+.klc-tool-btn--active:hover {
+  background: var(--klc-accent-hover);
+}
+
+/* ==================== Toolbar Actions (bottom icons) ==================== */
+
+.klc-toolbar-actions {
+  border-top: 1px solid var(--klc-border);
+  padding: 4px 0;
+  flex-shrink: 0;
+}
+
+.klc-toolbar-action {
+  color: var(--klc-text-muted);
+}
+
+.klc-toolbar-action--danger:hover {
+  color: var(--klc-danger);
+}
+
+/* ==================== Period Bar (inline mode) ==================== */
+
+.klc-period-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+
+.klc-period-btn {
+  padding: 3px 8px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--klc-radius);
+  color: var(--klc-text-muted);
+  font-size: var(--klc-font-size);
+  font-family: var(--klc-font);
+  cursor: pointer;
+}
+
+.klc-period-btn:hover {
+  background: var(--klc-bg-hover);
+  color: var(--klc-text);
+}
+
+.klc-period-btn--active {
+  background: var(--klc-accent);
+  color: #ffffff;
+}
+
+.klc-period-btn--active:hover {
+  background: var(--klc-accent-hover);
+}
+
+/* ==================== Indicator Panel ==================== */
+
+.klc-indicator-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 420px;
+  max-height: 500px;
+  background: var(--klc-bg-secondary);
+  border: 1px solid var(--klc-border);
+  border-radius: 8px;
+  z-index: 100;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.klc-indicator-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--klc-border);
+}
+
+.klc-indicator-panel-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.klc-indicator-panel-close {
+  background: none;
+  border: none;
+  color: var(--klc-text-muted);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.klc-indicator-panel-close:hover {
+  color: var(--klc-text);
+}
+
+.klc-indicator-panel-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 14px;
+  overflow-y: auto;
+  max-height: 400px;
+}
+
+.klc-indicator-item {
+  padding: 5px 12px;
+  background: var(--klc-bg);
+  border: 1px solid var(--klc-border);
+  border-radius: var(--klc-radius);
+  color: var(--klc-text);
+  font-size: var(--klc-font-size);
+  font-family: var(--klc-font);
+  cursor: pointer;
+}
+
+.klc-indicator-item:hover {
+  background: var(--klc-bg-hover);
+}
+
+.klc-indicator-item--active {
+  background: var(--klc-accent);
+  border-color: var(--klc-accent);
+  color: #ffffff;
+}
+
+.klc-indicator-item--active:hover {
+  background: var(--klc-accent-hover);
+}
