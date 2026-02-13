@@ -26,6 +26,7 @@ import { ruler } from './measurement/ruler';
 import { priceMeasurement } from './measurement/priceMeasurement';
 import { timeMeasurement } from './measurement/timeMeasurement';
 import { priceTimeMeasurement } from './measurement/priceTimeMeasurement';
+import { horizontalRay } from './lines/horizontalRay';
 
 const ALL_OVERLAYS = [
   // Fibonacci
@@ -61,6 +62,8 @@ const ALL_OVERLAYS = [
   priceMeasurement,
   timeMeasurement,
   priceTimeMeasurement,
+  // Lines
+  horizontalRay,
 ];
 
 let registered = false;

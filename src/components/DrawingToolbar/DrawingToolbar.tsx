@@ -1,14 +1,44 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { DomPosition } from 'klinecharts';
-import type { OverlayCreate, OverlayMode } from 'klinecharts';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FC,
+} from 'react';
+import {
+  DomPosition,
+  type Overlay,
+  type OverlayCreate,
+  type OverlayEvent,
+  type OverlayMode,
+} from 'klinecharts';
 import { useKlineChartContext } from '../KlineChart/KlineChartContext';
-import { ToolCategoryComponent } from './ToolCategory';
 import { defaultCategories } from './defaultCategories';
 import type { ToolCategory, ToolDefinition } from './defaultCategories';
-import { EyeIcon, EyeOffIcon, LockIcon, UnlockIcon, TrashIcon } from './icons';
+import {
+  EyeIcon,
+  EyeOffIcon,
+  LockIcon,
+  toolIcons,
+  TrashIcon,
+  UnlockIcon,
+} from './icons';
 import { useCrosshair } from '../../hooks/useCrosshair';
 
-const DEBUG_POSITION_TOOL = false;
+export type DrawingManagedOverlayEventType =
+  | 'created'
+  | 'updated'
+  | 'removed'
+  | 'selected'
+  | 'deselected';
+
+export interface DrawingManagedOverlayEvent {
+  type: DrawingManagedOverlayEventType;
+  overlayId: string;
+  overlayName: string;
+  overlay: Overlay | null;
+}
 
 export interface DrawingToolbarProps {
   position?: 'left' | 'right';
@@ -16,26 +46,58 @@ export interface DrawingToolbarProps {
   magnetMode?: OverlayMode;
   onMagnetModeChange?: (mode: OverlayMode) => void;
   className?: string;
+  onOverlayEvent?: (event: DrawingManagedOverlayEvent) => void;
 }
 
-export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
+function isString(value: unknown): value is string {
+  return typeof value === 'string';
+}
+
+function isOneClickPresetTool(overlayName: string): boolean {
+  return (
+    overlayName === 'longPosition' ||
+    overlayName === 'shortPosition' ||
+    overlayName === 'horizontalRay'
+  );
+}
+
+export const DrawingToolbar: FC<DrawingToolbarProps> = ({
   position = 'left',
   categories = defaultCategories,
   magnetMode,
-  onMagnetModeChange,
+  onMagnetModeChange: _onMagnetModeChange,
   className,
+  onOverlayEvent,
 }) => {
   const { chart } = useKlineChartContext();
   const crosshair = useCrosshair();
+  const crosshairRef = useRef(crosshair);
+
   const selectedOverlayIdsRef = useRef<Set<string>>(new Set());
-  const [activeTool, setActiveTool] = useState<string | null>(null);
-  const activeToolRef = useRef<string | null>(null);
   const activeOverlayIdRef = useRef<string | null>(null);
-  const [openCategory, setOpenCategory] = useState<string | null>(null);
+  const activeToolRef = useRef<string | null>(null);
+
+  const [activeTool, setActiveTool] = useState<string | null>(null);
   const [overlaysVisible, setOverlaysVisible] = useState(true);
   const [overlaysLocked, setOverlaysLocked] = useState(false);
-  const [pendingPositionTool, setPendingPositionTool] = useState<string | null>(null);
-  const crosshairRef = useRef(crosshair);
+  const [pendingPresetTool, setPendingPresetTool] = useState<string | null>(
+    null,
+  );
+
+  const toolbarTools = useMemo(() => {
+    const tools: ToolDefinition[] = [];
+    const seen = new Set<string>();
+
+    for (const category of categories) {
+      for (const tool of category.tools) {
+        if (seen.has(tool.name)) continue;
+        seen.add(tool.name);
+        tools.push(tool);
+      }
+    }
+
+    return tools;
+  }, [categories]);
 
   useEffect(() => {
     crosshairRef.current = crosshair;
@@ -45,390 +107,294 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
     selectedOverlayIdsRef.current.clear();
   }, [chart]);
 
-  const logPositionDebug = useCallback((message: string, payload?: unknown) => {
-    if (!DEBUG_POSITION_TOOL) return;
-    if (payload !== undefined) {
-      console.log(`[DrawingToolbar][Position] ${message}`, payload);
-    } else {
-      console.log(`[DrawingToolbar][Position] ${message}`);
-    }
-  }, []);
-
-  const handleOverlaySelected = useCallback((event: any) => {
-    const overlay = event?.overlay;
-    const id = overlay?.id;
-    if (typeof id === 'string') {
-      selectedOverlayIdsRef.current.add(id);
-    }
-    if (overlay && typeof overlay === 'object') {
-      const extendData = (overlay.extendData ?? {}) as Record<string, unknown>;
-      if (Object.prototype.hasOwnProperty.call(extendData, 'selected')) {
-        extendData.selected = true;
-        overlay.extendData = extendData;
-      }
-    }
-    return true;
-  }, []);
-
-  const handleOverlayDeselected = useCallback((event: any) => {
-    const overlay = event?.overlay;
-    const id = overlay?.id;
-    if (typeof id === 'string') {
-      selectedOverlayIdsRef.current.delete(id);
-    }
-    if (overlay && typeof overlay === 'object') {
-      const extendData = (overlay.extendData ?? {}) as Record<string, unknown>;
-      if (Object.prototype.hasOwnProperty.call(extendData, 'selected')) {
-        extendData.selected = false;
-        overlay.extendData = extendData;
-      }
-    }
-    return true;
-  }, []);
-
-  const handleOverlayRemoved = useCallback((event: any) => {
-    const id = event?.overlay?.id;
-    if (typeof id === 'string') {
-      selectedOverlayIdsRef.current.delete(id);
-    }
-    return true;
-  }, []);
-
-  const createPresetPositionOverlay = useCallback((
-    overlayName: string,
-    seedPoint?: Partial<{ dataIndex: number; value: number }>,
-    paneId?: string,
-    seedPixel?: Partial<{ x: number; y: number }>
-  ): boolean => {
-    const latestCrosshair = crosshairRef.current;
-    logPositionDebug('createPresetPositionOverlay:start', {
-      overlayName,
-      hasChart: !!chart,
-      crosshair: latestCrosshair,
-      seedPoint,
-      paneId,
-      seedPixel,
-    });
-    if (!chart) {
-      console.warn('[DrawingToolbar][Position] createPresetPositionOverlay:abort no chart');
-      return false;
-    }
-
-    const dataList = chart.getDataList();
-    logPositionDebug('createPresetPositionOverlay:dataList', { length: dataList.length });
-    if (!dataList.length) {
-      console.warn('[DrawingToolbar][Position] createPresetPositionOverlay:abort no data');
-      return false;
-    }
-
-    const maxIndex = dataList.length - 1;
-    let centerIndex = typeof seedPoint?.dataIndex === 'number'
-      ? Math.round(seedPoint.dataIndex)
-      : typeof latestCrosshair?.dataIndex === 'number'
-        ? Math.round(latestCrosshair.dataIndex)
-        : maxIndex;
-    centerIndex = Math.max(0, Math.min(maxIndex, centerIndex));
-
-    const halfWidth = 10;
-    let leftIndex = Math.max(0, centerIndex - halfWidth);
-    let rightIndex = Math.min(maxIndex, centerIndex + halfWidth);
-    if (leftIndex === rightIndex && rightIndex < maxIndex) rightIndex += 1;
-    if (leftIndex === rightIndex && leftIndex > 0) leftIndex -= 1;
-
-    const rightCandle = dataList[rightIndex];
-    const leftCandle = dataList[leftIndex];
-    if (!rightCandle || !leftCandle) {
-      console.warn('[DrawingToolbar][Position] createPresetPositionOverlay:abort candle missing', {
-        leftIndex,
-        rightIndex,
+  const emitOverlayEvent = useCallback(
+    (type: DrawingManagedOverlayEventType, overlay: Overlay | null) => {
+      if (!overlay || !onOverlayEvent || !isString(overlay.id)) return;
+      onOverlayEvent({
+        type,
+        overlayId: overlay.id,
+        overlayName: overlay.name,
+        overlay,
       });
-      return false;
-    }
+    },
+    [onOverlayEvent],
+  );
 
-    let entryValue = typeof seedPoint?.value === 'number' ? seedPoint.value : rightCandle.close;
-
-    if (typeof latestCrosshair?.x === 'number' && typeof latestCrosshair?.y === 'number') {
-      const finder = latestCrosshair.paneId ? { paneId: latestCrosshair.paneId } : {};
-      const converted = chart.convertFromPixel([{ x: latestCrosshair.x, y: latestCrosshair.y }], finder);
-      const point = Array.isArray(converted) ? converted[0] : converted;
-      logPositionDebug('createPresetPositionOverlay:convertFromPixel', { finder, converted, point });
-      if (point && typeof point.value === 'number') {
-        entryValue = point.value;
+  const handleOverlaySelected = useCallback(
+    (event: OverlayEvent) => {
+      const overlay = event.overlay;
+      if (isString(overlay?.id)) {
+        selectedOverlayIdsRef.current.add(overlay.id);
       }
-    } else if (latestCrosshair?.kLineData?.close !== undefined) {
-      entryValue = latestCrosshair.kLineData.close;
-    }
-
-    const pricePrecision = chart.getPriceVolumePrecision().price;
-    const tickSize = Math.pow(10, -Math.max(0, pricePrecision));
-    const valueDelta = Math.max(Math.abs(entryValue) * 0.01, tickSize * 20, 1e-8);
-
-    const targetPaneId = paneId || 'candle_pane';
-
-    const pointsByIndexAndTimestamp: OverlayCreate['points'] = [
-      {
-        timestamp: leftCandle.timestamp,
-        dataIndex: leftIndex,
-        value: entryValue + valueDelta,
-      },
-      {
-        timestamp: rightCandle.timestamp,
-        dataIndex: rightIndex,
-        value: entryValue,
-      },
-      {
-        timestamp: leftCandle.timestamp,
-        dataIndex: leftIndex,
-        value: entryValue - valueDelta,
-      },
-    ];
-
-    const pointsByTimestampOnly: OverlayCreate['points'] = [
-      {
-        timestamp: leftCandle.timestamp,
-        value: entryValue + valueDelta,
-      },
-      {
-        timestamp: rightCandle.timestamp,
-        value: entryValue,
-      },
-      {
-        timestamp: leftCandle.timestamp,
-        value: entryValue - valueDelta,
-      },
-    ];
-
-    const centerCandle = dataList[centerIndex];
-    const nextTimestamp = dataList[Math.min(maxIndex, centerIndex + 1)]?.timestamp ?? centerCandle?.timestamp ?? 0;
-    const prevTimestamp = dataList[Math.max(0, centerIndex - 1)]?.timestamp ?? centerCandle?.timestamp ?? 0;
-    const inferredStepMs = Math.max(60_000, Math.abs(nextTimestamp - prevTimestamp) || 60_000);
-    const centerTimestamp = centerCandle?.timestamp ?? rightCandle.timestamp;
-    const syntheticLeftTs = centerTimestamp - inferredStepMs * 10;
-    const syntheticRightTs = centerTimestamp + inferredStepMs * 10;
-
-    const pointsBySyntheticTimestamp: OverlayCreate['points'] = [
-      {
-        timestamp: syntheticLeftTs,
-        value: entryValue + valueDelta,
-      },
-      {
-        timestamp: syntheticRightTs,
-        value: entryValue,
-      },
-      {
-        timestamp: syntheticLeftTs,
-        value: entryValue - valueDelta,
-      },
-    ];
-
-    let pointsByPixelAnchors: OverlayCreate['points'] = [];
-    if (typeof seedPixel?.x === 'number' && typeof seedPixel?.y === 'number') {
-      const leftX = Math.max(0, seedPixel.x - 120);
-      const rightX = seedPixel.x + 120;
-      const anchorFinder = { paneId: targetPaneId };
-      const converted = chart.convertFromPixel(
-        [
-          { x: leftX, y: seedPixel.y },
-          { x: rightX, y: seedPixel.y },
-        ],
-        anchorFinder
-      );
-      const anchorPoints = Array.isArray(converted) ? converted : [converted];
-      const leftPoint = anchorPoints[0];
-      const rightPoint = anchorPoints[1];
-      if (leftPoint && rightPoint) {
-        pointsByPixelAnchors = [
-          {
-            timestamp: typeof leftPoint.timestamp === 'number' ? leftPoint.timestamp : undefined,
-            dataIndex: typeof leftPoint.dataIndex === 'number' ? leftPoint.dataIndex : undefined,
-            value: entryValue + valueDelta,
-          },
-          {
-            timestamp: typeof rightPoint.timestamp === 'number' ? rightPoint.timestamp : undefined,
-            dataIndex: typeof rightPoint.dataIndex === 'number' ? rightPoint.dataIndex : undefined,
-            value: entryValue,
-          },
-          {
-            timestamp: typeof leftPoint.timestamp === 'number' ? leftPoint.timestamp : undefined,
-            dataIndex: typeof leftPoint.dataIndex === 'number' ? leftPoint.dataIndex : undefined,
-            value: entryValue - valueDelta,
-          },
-        ];
+      if (overlay && typeof overlay === 'object') {
+        const extendData = (overlay.extendData ?? {}) as Record<string, unknown>;
+        if (Object.prototype.hasOwnProperty.call(extendData, 'selected')) {
+          extendData.selected = true;
+          overlay.extendData = extendData;
+        }
       }
-      logPositionDebug('createPresetPositionOverlay:pixelAnchors', {
-        leftX,
-        rightX,
-        anchorFinder,
-        converted,
-        pointsByPixelAnchors,
-      });
-    }
-
-    const calcWidth = (candidate: OverlayCreate['points']): number => {
-      const pixels = chart.convertToPixel(candidate ?? [], { paneId: targetPaneId });
-      const px = Array.isArray(pixels) ? pixels : [pixels];
-      if (px.length < 2 || typeof px[0]?.x !== 'number' || typeof px[1]?.x !== 'number') {
-        return 0;
-      }
-      return Math.abs(px[1].x - px[0].x);
-    };
-
-    const candidateWidths = [
-      { key: 'index+timestamp', points: pointsByIndexAndTimestamp, width: calcWidth(pointsByIndexAndTimestamp) },
-      { key: 'timestamp-only', points: pointsByTimestampOnly, width: calcWidth(pointsByTimestampOnly) },
-      { key: 'synthetic-timestamp', points: pointsBySyntheticTimestamp, width: calcWidth(pointsBySyntheticTimestamp) },
-      { key: 'pixel-anchors', points: pointsByPixelAnchors, width: calcWidth(pointsByPixelAnchors) },
-    ];
-
-    candidateWidths.sort((a, b) => b.width - a.width);
-    const bestCandidate = candidateWidths[0];
-    const points = bestCandidate.points;
-
-    logPositionDebug('createPresetPositionOverlay:computed', {
-      leftIndex,
-      rightIndex,
-      leftTimestamp: leftCandle.timestamp,
-      rightTimestamp: rightCandle.timestamp,
-      entryValue,
-      pricePrecision,
-      tickSize,
-      valueDelta,
-      inferredStepMs,
-      candidateWidths: candidateWidths.map((c) => ({ key: c.key, width: c.width })),
-      selectedCandidate: bestCandidate.key,
-      points,
-    });
-
-    const createdId = chart.createOverlay({
-      name: overlayName,
-      mode: magnetMode,
-      zLevel: 20,
-      points,
-      onSelected: handleOverlaySelected,
-      onDeselected: handleOverlayDeselected,
-      onRemoved: handleOverlayRemoved,
-    }, targetPaneId);
-    logPositionDebug('createPresetPositionOverlay:createOverlay result', { createdId, targetPaneId });
-
-    const visibleRange = chart.getVisibleRange();
-    logPositionDebug('createPresetPositionOverlay:visibleRange', visibleRange);
-    if (centerIndex < visibleRange.from || centerIndex > visibleRange.to) {
-      chart.scrollToDataIndex(centerIndex);
-      logPositionDebug('createPresetPositionOverlay:scrolledToDataIndex', { centerIndex });
-    }
-
-    if (typeof createdId === 'string') {
-      const createdOverlay = chart.getOverlayById(createdId);
-      const pixels = chart.convertToPixel(points ?? [], { paneId: targetPaneId });
-      const px = Array.isArray(pixels) ? pixels : [pixels];
-      const pxSummary = px.map((p) => ({
-        x: typeof p?.x === 'number' ? Number(p.x.toFixed(2)) : null,
-        y: typeof p?.y === 'number' ? Number(p.y.toFixed(2)) : null,
-      }));
-      const width =
-        pxSummary.length >= 2 &&
-        pxSummary[0].x !== null &&
-        pxSummary[1].x !== null
-          ? Math.abs((pxSummary[1].x as number) - (pxSummary[0].x as number))
-          : null;
-      const upperHeight =
-        pxSummary.length >= 2 &&
-        pxSummary[0].y !== null &&
-        pxSummary[1].y !== null
-          ? Math.abs((pxSummary[1].y as number) - (pxSummary[0].y as number))
-          : null;
-      const lowerHeight =
-        pxSummary.length >= 3 &&
-        pxSummary[1].y !== null &&
-        pxSummary[2].y !== null
-          ? Math.abs((pxSummary[2].y as number) - (pxSummary[1].y as number))
-          : null;
-
-      logPositionDebug('createPresetPositionOverlay:createdOverlay', createdOverlay);
-      logPositionDebug('createPresetPositionOverlay:pointsPixels', {
-        pxSummary,
-        width,
-        upperHeight,
-        lowerHeight,
-        selectedCandidate: bestCandidate.key,
-      });
-      if (width !== null && width < 3) {
-        console.warn('[DrawingToolbar][Position] pointsPixels width is near zero', { width, pxSummary });
-      }
-    }
-
-    if (typeof createdId === 'string') {
+      emitOverlayEvent('selected', overlay ?? null);
       return true;
-    }
+    },
+    [emitOverlayEvent],
+  );
 
-    console.warn('[DrawingToolbar][Position] createPresetPositionOverlay:fallback to normal drawing mode');
-    const fallbackId = chart.createOverlay({
-      name: overlayName,
-      mode: magnetMode,
-      zLevel: 20,
-      onSelected: handleOverlaySelected,
-      onDeselected: handleOverlayDeselected,
-      onRemoved: handleOverlayRemoved,
-    });
-    logPositionDebug('createPresetPositionOverlay:fallback result', { fallbackId });
-    return typeof fallbackId === 'string';
-  }, [
-    chart,
-    handleOverlayDeselected,
-    handleOverlayRemoved,
-    handleOverlaySelected,
-    logPositionDebug,
-    magnetMode,
-  ]);
+  const handleOverlayDeselected = useCallback(
+    (event: OverlayEvent) => {
+      const overlay = event.overlay;
+      if (isString(overlay?.id)) {
+        selectedOverlayIdsRef.current.delete(overlay.id);
+      }
+      if (overlay && typeof overlay === 'object') {
+        const extendData = (overlay.extendData ?? {}) as Record<string, unknown>;
+        if (Object.prototype.hasOwnProperty.call(extendData, 'selected')) {
+          extendData.selected = false;
+          overlay.extendData = extendData;
+        }
+      }
+      emitOverlayEvent('deselected', overlay ?? null);
+      return true;
+    },
+    [emitOverlayEvent],
+  );
+
+  const handleOverlayRemoved = useCallback(
+    (event: OverlayEvent) => {
+      const overlay = event.overlay;
+      if (isString(overlay?.id)) {
+        selectedOverlayIdsRef.current.delete(overlay.id);
+      }
+      emitOverlayEvent('removed', overlay ?? null);
+      return true;
+    },
+    [emitOverlayEvent],
+  );
+
+  const handleOverlayMoving = useCallback((event: OverlayEvent) => {
+    if (!event.overlay || !isString(event.overlay.id)) return false;
+    return false;
+  }, []);
+
+  const handleOverlayDrawing = useCallback(
+    (event: OverlayEvent) => {
+      const overlay = event.overlay;
+      if (!overlay || !isString(overlay.id)) return true;
+      emitOverlayEvent('updated', overlay);
+      return true;
+    },
+    [emitOverlayEvent],
+  );
+
+  const handleOverlayMoveEnd = useCallback(
+    (event: OverlayEvent) => {
+      const overlay = event.overlay;
+      if (!overlay || !isString(overlay.id)) return true;
+      const latest = chart?.getOverlayById(overlay.id) ?? overlay;
+      emitOverlayEvent('updated', latest);
+      return true;
+    },
+    [chart, emitOverlayEvent],
+  );
+
+  const clearActiveToolState = useCallback(() => {
+    activeToolRef.current = null;
+    activeOverlayIdRef.current = null;
+    setPendingPresetTool(null);
+    setActiveTool(null);
+  }, []);
+
+  const createPresetPositionOverlay = useCallback(
+    (
+      overlayName: string,
+      seedPoint?: Partial<{ dataIndex: number; value: number }>,
+      paneId?: string,
+    ): boolean => {
+      if (!chart) return false;
+
+      const dataList = chart.getDataList();
+      if (!dataList.length) return false;
+
+      const maxIndex = dataList.length - 1;
+      let centerIndex =
+        typeof seedPoint?.dataIndex === 'number'
+          ? Math.round(seedPoint.dataIndex)
+          : typeof crosshairRef.current?.dataIndex === 'number'
+            ? Math.round(crosshairRef.current.dataIndex)
+            : maxIndex;
+      centerIndex = Math.max(0, Math.min(maxIndex, centerIndex));
+
+      const leftIndex = Math.max(0, centerIndex - 10);
+      const rightIndex = Math.min(maxIndex, centerIndex + 10);
+      const leftCandle = dataList[leftIndex];
+      const rightCandle = dataList[rightIndex];
+      if (!leftCandle || !rightCandle) return false;
+
+      const entryValue =
+        typeof seedPoint?.value === 'number' ? seedPoint.value : rightCandle.close;
+
+      const pricePrecision = chart.getPriceVolumePrecision().price;
+      const tickSize = Math.pow(10, -Math.max(0, pricePrecision));
+      const valueDelta = Math.max(Math.abs(entryValue) * 0.01, tickSize * 20);
+
+      const points: OverlayCreate['points'] = [
+        {
+          timestamp: leftCandle.timestamp,
+          dataIndex: leftIndex,
+          value: entryValue + valueDelta,
+        },
+        {
+          timestamp: rightCandle.timestamp,
+          dataIndex: rightIndex,
+          value: entryValue,
+        },
+        {
+          timestamp: leftCandle.timestamp,
+          dataIndex: leftIndex,
+          value: entryValue - valueDelta,
+        },
+      ];
+
+      const createdId = chart.createOverlay(
+        {
+          name: overlayName,
+          mode: magnetMode,
+          zLevel: 20,
+          points,
+          onSelected: handleOverlaySelected,
+          onDeselected: handleOverlayDeselected,
+          onRemoved: handleOverlayRemoved,
+          onPressedMoving: handleOverlayMoving,
+          onPressedMoveEnd: handleOverlayMoveEnd,
+        },
+        paneId || 'candle_pane',
+      );
+
+      if (!isString(createdId)) {
+        return false;
+      }
+
+      const overlay = chart.getOverlayById(createdId);
+      emitOverlayEvent('created', overlay);
+      return true;
+    },
+    [
+      chart,
+      emitOverlayEvent,
+      handleOverlayDeselected,
+      handleOverlayRemoved,
+      handleOverlaySelected,
+      handleOverlayMoveEnd,
+      handleOverlayMoving,
+      magnetMode,
+    ],
+  );
+
+  const createPresetHorizontalRayOverlay = useCallback(
+    (
+      seedPoint?: Partial<{ dataIndex: number; value: number }>,
+      paneId?: string,
+    ): boolean => {
+      if (!chart) return false;
+
+      const dataList = chart.getDataList();
+      if (!dataList.length) return false;
+
+      const maxIndex = dataList.length - 1;
+      let startIndex =
+        typeof seedPoint?.dataIndex === 'number'
+          ? Math.round(seedPoint.dataIndex)
+          : typeof crosshairRef.current?.dataIndex === 'number'
+            ? Math.round(crosshairRef.current.dataIndex)
+            : maxIndex;
+      startIndex = Math.max(0, Math.min(maxIndex, startIndex));
+
+      const startCandle = dataList[startIndex];
+      if (!startCandle) return false;
+
+      const entryValue =
+        typeof seedPoint?.value === 'number' ? seedPoint.value : startCandle.close;
+
+      const points: OverlayCreate['points'] = [
+        {
+          timestamp: startCandle.timestamp,
+          dataIndex: startIndex,
+          value: entryValue,
+        },
+      ];
+
+      const createdId = chart.createOverlay(
+        {
+          name: 'horizontalRay',
+          mode: magnetMode,
+          zLevel: 20,
+          points,
+          onSelected: handleOverlaySelected,
+          onDeselected: handleOverlayDeselected,
+          onRemoved: handleOverlayRemoved,
+          onPressedMoving: handleOverlayMoving,
+          onPressedMoveEnd: handleOverlayMoveEnd,
+        },
+        paneId || 'candle_pane',
+      );
+
+      if (!isString(createdId)) {
+        return false;
+      }
+
+      const overlay = chart.getOverlayById(createdId);
+      emitOverlayEvent('created', overlay);
+      return true;
+    },
+    [
+      chart,
+      emitOverlayEvent,
+      handleOverlayDeselected,
+      handleOverlayRemoved,
+      handleOverlaySelected,
+      handleOverlayMoveEnd,
+      handleOverlayMoving,
+      magnetMode,
+    ],
+  );
 
   useEffect(() => {
-    if (!chart || !pendingPositionTool) return;
+    if (!chart || !pendingPresetTool) return;
+
     const main = chart.getDom(undefined, DomPosition.Main);
     if (!main) return;
 
-    logPositionDebug('pendingPositionTool:armed', { pendingPositionTool });
-
     const handleMainMouseDown = (event: MouseEvent) => {
+      const overlayName = pendingPresetTool;
+      if (!overlayName) return;
+
+      setPendingPresetTool(null);
+      clearActiveToolState();
+
       const rect = main.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      const latestCrosshair = crosshairRef.current;
-      const paneId = latestCrosshair?.paneId;
-      const finder =
-        paneId && paneId.toLowerCase().includes('candle')
-          ? { paneId }
-          : {};
-      const converted = chart.convertFromPixel([{ x, y }], finder);
-      const point = Array.isArray(converted) ? converted[0] : converted;
-
-      logPositionDebug('pendingPositionTool:click', {
-        pendingPositionTool,
-        x,
-        y,
-        paneId,
-        finder,
-        converted,
-        point,
-      });
-
-      const created = createPresetPositionOverlay(
-        pendingPositionTool,
-        point && typeof point === 'object'
-          ? {
-              dataIndex: typeof point.dataIndex === 'number' ? point.dataIndex : undefined,
-              value: typeof point.value === 'number' ? point.value : undefined,
-            }
-          : undefined,
-        paneId && paneId.toLowerCase().includes('candle') ? paneId : 'candle_pane',
-        { x, y }
+      const point = chart.convertFromPixel(
+        [
+          {
+            x: event.clientX - rect.left,
+            y: event.clientY - rect.top,
+          },
+        ],
+        { paneId: 'candle_pane' },
       );
+      const first = Array.isArray(point) ? point[0] : point;
 
-      if (created) {
-        logPositionDebug('pendingPositionTool:placed');
-        setPendingPositionTool(null);
-        activeToolRef.current = null;
-        activeOverlayIdRef.current = null;
-        setActiveTool(null);
+      const seedPoint =
+        first && typeof first === 'object'
+          ? {
+              dataIndex:
+                typeof first.dataIndex === 'number' ? first.dataIndex : undefined,
+              value: typeof first.value === 'number' ? first.value : undefined,
+            }
+          : undefined;
+
+      if (overlayName === 'horizontalRay') {
+        createPresetHorizontalRayOverlay(seedPoint, 'candle_pane');
+      } else {
+        createPresetPositionOverlay(overlayName, seedPoint, 'candle_pane');
       }
     };
 
@@ -436,88 +402,89 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
     return () => {
       main.removeEventListener('mousedown', handleMainMouseDown);
     };
-  }, [chart, createPresetPositionOverlay, logPositionDebug, pendingPositionTool]);
+  }, [
+    chart,
+    clearActiveToolState,
+    createPresetHorizontalRayOverlay,
+    createPresetPositionOverlay,
+    pendingPresetTool,
+  ]);
 
   const handleToolSelect = useCallback(
     (tool: ToolDefinition) => {
-      logPositionDebug('handleToolSelect', {
-        toolName: tool.name,
-        overlayName: tool.overlayName,
-        hasChart: !!chart,
-      });
       if (!chart) return;
 
-      const isPositionTool =
-        tool.name === 'longPosition' || tool.name === 'shortPosition';
-      logPositionDebug('handleToolSelect:isPositionTool', { isPositionTool });
-      if (isPositionTool) {
-        setPendingPositionTool(tool.overlayName);
+      if (isOneClickPresetTool(tool.overlayName)) {
+        setPendingPresetTool(tool.overlayName);
         setActiveTool(tool.name);
-        logPositionDebug('handleToolSelect:position pending placement');
         return;
       }
+
+      setPendingPresetTool(null);
 
       if (activeToolRef.current === tool.name) {
         if (activeOverlayIdRef.current) {
           chart.removeOverlay({ id: activeOverlayIdRef.current });
         }
-        activeToolRef.current = null;
-        activeOverlayIdRef.current = null;
-        setActiveTool(null);
+        clearActiveToolState();
         return;
       }
 
       activeToolRef.current = tool.name;
       setActiveTool(tool.name);
+
       const id = chart.createOverlay({
         name: tool.overlayName,
         mode: magnetMode,
         onSelected: handleOverlaySelected,
         onDeselected: handleOverlayDeselected,
         onRemoved: handleOverlayRemoved,
-        onDrawEnd: () => {
-          activeToolRef.current = null;
-          activeOverlayIdRef.current = null;
-          setActiveTool(null);
+        onDrawing: handleOverlayDrawing,
+        onPressedMoving: handleOverlayMoving,
+        onPressedMoveEnd: handleOverlayMoveEnd,
+        onDrawEnd: (event) => {
+          emitOverlayEvent('created', event.overlay ?? null);
+          clearActiveToolState();
           return true;
         },
       });
-      logPositionDebug('handleToolSelect:default createOverlay result', { id, toolName: tool.name });
-      activeOverlayIdRef.current = typeof id === 'string' ? id : null;
+
+      activeOverlayIdRef.current = isString(id) ? id : null;
     },
     [
       chart,
-      createPresetPositionOverlay,
+      clearActiveToolState,
+      emitOverlayEvent,
       handleOverlayDeselected,
       handleOverlayRemoved,
       handleOverlaySelected,
-      logPositionDebug,
+      handleOverlayDrawing,
+      handleOverlayMoveEnd,
+      handleOverlayMoving,
       magnetMode,
-    ]
+    ],
   );
 
   const handleDeleteAll = useCallback(() => {
     if (!chart) return;
     chart.removeOverlay();
     selectedOverlayIdsRef.current.clear();
-    activeToolRef.current = null;
-    activeOverlayIdRef.current = null;
-    setActiveTool(null);
-  }, [chart]);
+    clearActiveToolState();
+  }, [chart, clearActiveToolState]);
 
   useEffect(() => {
     if (!chart) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Backspace') return;
+      if (event.key !== 'Backspace' && event.key !== 'Delete') return;
 
       const target = event.target as HTMLElement | null;
-      const tagName = target?.tagName?.toLowerCase();
-      const isTypingTarget =
+      const tagName = target?.tagName.toLowerCase();
+      const isTyping =
         tagName === 'input' ||
         tagName === 'textarea' ||
-        target?.isContentEditable;
-      if (isTypingTarget) return;
+        Boolean(target?.isContentEditable);
+      if (isTyping) return;
 
       const selectedIds = Array.from(selectedOverlayIdsRef.current);
       if (selectedIds.length === 0) return;
@@ -525,7 +492,6 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
       event.preventDefault();
       for (const id of selectedIds) {
         chart.removeOverlay({ id });
-        selectedOverlayIdsRef.current.delete(id);
       }
     };
 
@@ -547,36 +513,38 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
     chart.overrideOverlay({ lock: next });
   }, [chart, overlaysLocked]);
 
-  const handleCategoryToggle = useCallback((categoryId: string) => {
-    setOpenCategory((prev) => (prev === categoryId ? null : categoryId));
-  }, []);
-
   return (
     <div
       className={`klc-drawing-toolbar klc-drawing-toolbar--${position} ${className ?? ''}`}
     >
       <div className="klc-toolbar-categories">
-        {categories.map((category) => (
-          <ToolCategoryComponent
-            key={category.id}
-            category={category}
-            activeTool={activeTool}
-            isOpen={openCategory === category.id}
-            onToggle={handleCategoryToggle}
-            onToolSelect={handleToolSelect}
-          />
-        ))}
+        {toolbarTools.map((tool) => {
+          const Icon = toolIcons[tool.name];
+          return (
+            <button
+              key={tool.name}
+              type="button"
+              className={`klc-toolbar-icon ${activeTool === tool.name ? 'klc-toolbar-icon--active' : ''}`}
+              title={tool.label}
+              onClick={() => handleToolSelect(tool)}
+            >
+              {Icon ? <Icon size={18} /> : <span>{tool.label[0]}</span>}
+            </button>
+          );
+        })}
       </div>
 
       <div className="klc-toolbar-actions">
         <button
-          className={`klc-toolbar-icon klc-toolbar-action ${!overlaysVisible ? 'klc-toolbar-icon--active' : ''}`}
+          type="button"
+          className={`klc-toolbar-icon klc-toolbar-action ${overlaysVisible ? '' : 'klc-toolbar-icon--active'}`}
           title={overlaysVisible ? 'Hide all drawings' : 'Show all drawings'}
           onClick={handleToggleVisibility}
         >
           {overlaysVisible ? <EyeIcon size={18} /> : <EyeOffIcon size={18} />}
         </button>
         <button
+          type="button"
           className={`klc-toolbar-icon klc-toolbar-action ${overlaysLocked ? 'klc-toolbar-icon--active' : ''}`}
           title={overlaysLocked ? 'Unlock all drawings' : 'Lock all drawings'}
           onClick={handleToggleLock}
@@ -584,6 +552,7 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
           {overlaysLocked ? <LockIcon size={18} /> : <UnlockIcon size={18} />}
         </button>
         <button
+          type="button"
           className="klc-toolbar-icon klc-toolbar-action klc-toolbar-action--danger"
           title="Delete all drawings"
           onClick={handleDeleteAll}

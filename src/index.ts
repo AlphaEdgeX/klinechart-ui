@@ -4,7 +4,13 @@ export { KlineChartContext, useKlineChartContext } from './components/KlineChart
 export type { KlineChartProps, KlineChartContextValue } from './components/KlineChart';
 
 export { DrawingToolbar } from './components/DrawingToolbar';
-export type { DrawingToolbarProps, ToolCategory, ToolDefinition } from './components/DrawingToolbar';
+export type {
+  DrawingToolbarProps,
+  DrawingManagedOverlayEvent,
+  DrawingManagedOverlayEventType,
+  ToolCategory,
+  ToolDefinition,
+} from './components/DrawingToolbar';
 export { defaultCategories } from './components/DrawingToolbar';
 
 export { PeriodBar } from './components/PeriodBar';
@@ -56,6 +62,7 @@ export { ruler } from './overlays/measurement/ruler';
 export { priceMeasurement } from './overlays/measurement/priceMeasurement';
 export { timeMeasurement } from './overlays/measurement/timeMeasurement';
 export { priceTimeMeasurement } from './overlays/measurement/priceTimeMeasurement';
+export { horizontalRay } from './overlays/lines/horizontalRay';
 
 // Custom indicators
 export { openInterest } from './indicators/openInterest';
