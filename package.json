@@ -1,6 +1,6 @@
 {
   "name": "@alphaedge/klinechart-ui",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Reusable React chart library built on klinecharts",
   "type": "module",
   "main": "dist/index.cjs",
